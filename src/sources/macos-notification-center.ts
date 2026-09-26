@@ -10,6 +10,9 @@ export const STORE_PATH = join(homedir(), "Library/Group Containers/group.com.ap
 // The store uses Core Data timestamps: seconds since 2001-01-01 UTC.
 const APPLE_EPOCH_OFFSET_SECONDS = 978307200;
 const SEEN_LIMIT = 500;
+// usernoted commits rows a few seconds after their delivered_date, so a row can land behind
+// the cursor. Re-reading a short window is safe because the seen set dedupes it.
+const LOOKBACK_SECONDS = 60;
 const FALLBACK_POLL_MS = 2000;
 
 export type StoreRow = {
@@ -124,7 +127,7 @@ export function readNew(
   onParseError: (error: unknown, row: StoreRow) => void,
 ): { events: NotificationEvent[]; cursor: Cursor } {
   const seen = new Set(cursor.seen);
-  const rows = selectRows(db, sourceIds, cursor.deliveredDate).filter(
+  const rows = selectRows(db, sourceIds, cursor.deliveredDate - LOOKBACK_SECONDS).filter(
     (row) => !seen.has(uuidHex(row.uuid)),
   );
   let deliveredDate = cursor.deliveredDate;

@@ -50,7 +50,7 @@ describe("readNew", () => {
 
   test("ignores rows before the cursor and from sources outside the allowlist", () => {
     const db = createStore();
-    insertRecord(db, { uuid: UUID_A, deliveredDate: 50, data: fixture("discord-ptb-dm.plist") });
+    insertRecord(db, { uuid: UUID_A, deliveredDate: 10, data: fixture("discord-ptb-dm.plist") });
     insertRecord(db, { uuid: UUID_B, appId: 87, deliveredDate: 150, data: fixture("whatsapp-psa.plist") });
     expect(readNew(db, DISCORD, start, failOnParseError).events).toEqual([]);
   });
@@ -62,6 +62,14 @@ describe("readNew", () => {
     expect(first.events.map((event) => event.id)).toEqual([UUID_A]);
     expect(first.cursor).toEqual({ deliveredDate: 150, seen: [UUID_A] });
     expect(readNew(db, DISCORD, first.cursor, failOnParseError).events).toEqual([]);
+  });
+
+  test("a row committed behind the cursor is still relayed", () => {
+    const db = createStore();
+    insertRecord(db, { uuid: UUID_A, deliveredDate: 150, data: fixture("discord-ptb-dm.plist") });
+    const first = readNew(db, DISCORD, start, failOnParseError);
+    insertRecord(db, { uuid: UUID_B, deliveredDate: 145, data: fixture("discord-ptb-dm.plist") });
+    expect(readNew(db, DISCORD, first.cursor, failOnParseError).events.map((event) => event.id)).toEqual([UUID_B]);
   });
 
   test("a rec_id reused after delete emits only the new notification", () => {
