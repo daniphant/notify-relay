@@ -45,8 +45,10 @@ export function runDaemon(config: Config): void {
   const save = () => saveState(STATE_PATH, state);
   save();
 
+  const inFlight = new Set<Promise<void>>();
+
   function dispatch(sink: Sink, event: NotificationEvent, label: string): void {
-    sink.send(event, label).then(
+    const sent = sink.send(event, label).then(
       () => {
         state.sinks[sink.name] = { ...state.sinks[sink.name], lastSuccessAt: new Date().toISOString() };
         save();
@@ -57,6 +59,8 @@ export function runDaemon(config: Config): void {
         save();
       },
     );
+    inFlight.add(sent);
+    sent.finally(() => inFlight.delete(sent));
   }
 
   function poll(): void {
@@ -81,9 +85,12 @@ export function runDaemon(config: Config): void {
   poll();
   log(`watching ${sourceIds.join(", ")} (pid ${process.pid})`);
 
-  const shutdown = () => {
+  // The cursor already covers events that are still being posted, so let them finish.
+  // Posts time out well within launchd's 20 second exit timeout.
+  const shutdown = async () => {
     stopWatching();
     db.close();
+    await Promise.allSettled(inFlight);
     rmSync(PID_PATH, { force: true });
     process.exit(0);
   };
