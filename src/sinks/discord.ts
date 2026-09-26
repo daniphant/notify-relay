@@ -38,14 +38,8 @@ export function formatMessage(event: NotificationEvent, sourceLabel: string, con
   };
 }
 
-function retryAfterMs(response: Response, body: string): number {
-  let seconds = Number(response.headers.get("retry-after") ?? 1);
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed === "object" && parsed !== null && "retry_after" in parsed && typeof parsed.retry_after === "number") {
-      seconds = parsed.retry_after;
-    }
-  } catch {}
+function retryAfterMs(response: Response): number {
+  const seconds = Number(response.headers.get("retry-after") ?? 1);
   return Math.min(Number.isFinite(seconds) ? seconds * 1000 : 1000, MAX_RETRY_AFTER_MS);
 }
 
@@ -58,12 +52,11 @@ async function postMessage(channelId: string, token: string, message: DiscordMes
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (response.ok) return;
-    const body = await response.text();
     if (response.status === 429 && attempt === 1) {
-      await Bun.sleep(retryAfterMs(response, body));
+      await Bun.sleep(retryAfterMs(response));
       continue;
     }
-    throw new Error(`Discord responded ${response.status}: ${body.slice(0, 500)}`);
+    throw new Error(`Discord responded ${response.status}: ${(await response.text()).slice(0, 500)}`);
   }
 }
 

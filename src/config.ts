@@ -27,44 +27,40 @@ export type Config = {
 
 const SINK_KEYS = ["stdout", "discord"];
 
-class ConfigError extends Error {
-  override name = "ConfigError";
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireRecord(value: unknown, path: string): Record<string, unknown> {
-  if (!isRecord(value)) throw new ConfigError(`${path} must be an object`);
+  if (!isRecord(value)) throw new Error(`${path} must be an object`);
   return value;
 }
 
 function requireString(value: unknown, path: string): string {
-  if (typeof value !== "string" || value === "") throw new ConfigError(`${path} must be a non-empty string`);
+  if (typeof value !== "string" || value === "") throw new Error(`${path} must be a non-empty string`);
   return value;
 }
 
 function requireEnabled(sink: Record<string, unknown>, path: string): boolean {
-  if (typeof sink.enabled !== "boolean") throw new ConfigError(`${path}.enabled must be true or false`);
+  if (typeof sink.enabled !== "boolean") throw new Error(`${path}.enabled must be true or false`);
   return sink.enabled;
 }
 
 function parseDiscordSink(value: unknown): DiscordSinkConfig {
   const sink = requireRecord(value, "sinks.discord");
   const mentionOnValue: unknown = sink.mentionOn ?? [];
-  if (!Array.isArray(mentionOnValue)) throw new ConfigError("sinks.discord.mentionOn must be an array");
+  if (!Array.isArray(mentionOnValue)) throw new Error("sinks.discord.mentionOn must be an array");
   const mentionOn: EventKind[] = [];
   for (const kind of mentionOnValue as unknown[]) {
     const match = EVENT_KINDS.find((known) => known === kind);
     if (match === undefined) {
-      throw new ConfigError(`sinks.discord.mentionOn has ${JSON.stringify(kind)}, expected one of ${EVENT_KINDS.join(", ")}`);
+      throw new Error(`sinks.discord.mentionOn has ${JSON.stringify(kind)}, expected one of ${EVENT_KINDS.join(", ")}`);
     }
     mentionOn.push(match);
   }
   const mentionUserId = sink.mentionUserId === undefined ? undefined : requireString(sink.mentionUserId, "sinks.discord.mentionUserId");
   if (mentionOn.length > 0 && mentionUserId === undefined) {
-    throw new ConfigError("sinks.discord.mentionUserId is required when mentionOn is not empty");
+    throw new Error("sinks.discord.mentionUserId is required when mentionOn is not empty");
   }
   return {
     enabled: requireEnabled(sink, "sinks.discord"),
@@ -83,11 +79,11 @@ export function parseConfig(value: unknown): Config {
     // The store keeps bundle ids in whatever case the app registered with; match lowercased.
     sources[bundleId.toLowerCase()] = { label };
   }
-  if (Object.keys(sources).length === 0) throw new ConfigError("sources must list at least one bundle id");
+  if (Object.keys(sources).length === 0) throw new Error("sources must list at least one bundle id");
 
   const sinksValue = requireRecord(root.sinks, "sinks");
   for (const key of Object.keys(sinksValue)) {
-    if (!SINK_KEYS.includes(key)) throw new ConfigError(`sinks.${key} is not a known sink (expected ${SINK_KEYS.join(", ")})`);
+    if (!SINK_KEYS.includes(key)) throw new Error(`sinks.${key} is not a known sink (expected ${SINK_KEYS.join(", ")})`);
   }
   const sinks: Config["sinks"] = {};
   if (sinksValue.stdout !== undefined) {
@@ -99,22 +95,9 @@ export function parseConfig(value: unknown): Config {
 }
 
 export function loadConfig(path = CONFIG_PATH): Config {
-  let raw: string;
   try {
-    raw = readFileSync(path, "utf8");
+    return parseConfig(JSON.parse(readFileSync(path, "utf8")));
   } catch (error) {
-    throw new ConfigError(`Cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch (error) {
-    throw new ConfigError(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  try {
-    return parseConfig(json);
-  } catch (error) {
-    if (error instanceof ConfigError) error.message = `${path}: ${error.message}`;
-    throw error;
+    throw new Error(`Invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

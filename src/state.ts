@@ -14,8 +14,7 @@ export type State = {
   sinks: Record<string, SinkStatus>;
 };
 
-// The state file is written only by this process, so a malformed file means someone edited it
-// by hand. Fail loudly instead of silently resetting the cursor and skipping notifications.
+// Fail loudly on a malformed file: silently resetting the cursor would skip notifications.
 export function loadState(path: string): State | undefined {
   let raw: string;
   try {
